@@ -4,7 +4,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/Dropdown-menu"
 import { useTheme } from "@/lib/theme"
 import { Button } from "./ui/Button"
 
