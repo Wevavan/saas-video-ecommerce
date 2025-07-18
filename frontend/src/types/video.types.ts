@@ -29,3 +29,13 @@ export interface CreateVideoRequest {
   template?: string
   settings?: Record<string, any>
 }
+
+export interface RecentVideo {
+  id: string;
+  title: string;
+  thumbnail: string;
+  status: 'completed' | 'processing' | 'failed';
+  createdAt: string;
+  views: number;
+  duration: string;
+}

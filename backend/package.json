@@ -1,0 +1,63 @@
+{
+  "name": "saas-video-backend",
+  "version": "1.0.0",
+  "description": "Backend API pour SaaS de génération vidéo",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "nodemon src/server.ts",
+    "dev:full": "nodemon src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "jest",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.1.1",
+    "@types/jsonwebtoken": "^8.5.9",
+    "@types/mongoose": "^5.11.96",
+    "@types/node-cron": "^3.0.11",
+    "@types/uuid": "^10.0.0",
+    "axios": "^1.10.0",
+    "bcryptjs": "^2.4.3",
+    "compression": "^1.7.4",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.5.1",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^7.8.7",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1",
+    "node-cron": "^4.2.1",
+    "react-hook-form": "^7.60.0",
+    "uuid": "^11.1.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/compression": "^1.7.5",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.8",
+    "@types/morgan": "^1.9.9",
+    "@types/multer": "^1.4.13",
+    "@types/node": "^20.8.0",
+    "@typescript-eslint/eslint-plugin": "^6.10.0",
+    "@typescript-eslint/parser": "^6.10.0",
+    "eslint": "^8.52.0",
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.1",
+    "ts-node": "^10.9.1",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.2.2"
+  },
+  "optionalDependencies": {
+    "@img/sharp-libvips-win32-x64": "^1.2.0",
+    "@img/sharp-win32-x64": "^0.34.3"
+  },
+  "resolutions": {
+    "sharp": "^0.33.5"
+  }
+}
