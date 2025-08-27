@@ -1,26 +1,16 @@
-import { Router } from 'express'
-import authRoutes from './auth.routes'
-import userRoutes from './users.routes'
-import videoRoutes from './videos.routes'
-import generateRoutes from './generate.routes'
-import testRoutes from './test.routes'
-import uploadRoutes from './upload.route';
+// backend/src/routes/index.ts (mise à jour)
+import { Router } from 'express';
+import authRoutes from './auth.routes';
+import usersRoutes from './users.routes';
+import videosRoutes from './videos.routes';
+import testRoutes from './test.routes';
 
-const router = Router()
+const router = Router();
 
 // Routes principales
-router.use('/auth', authRoutes)
-router.use('/users', userRoutes)
-router.use('/videos', videoRoutes)
-router.use('/generate', generateRoutes)
-router.use('/upload', uploadRoutes);
+router.use('/auth', authRoutes);
+router.use('/users', usersRoutes);
+router.use('/videos', videosRoutes);
+router.use('/test', testRoutes);
 
-// Routes de test
-router.use('/test', testRoutes)
-
-// Route health directement accessible
-router.get('/health', (req, res) => {
-  res.redirect('/api/test/health')
-})
-
-export default router
+export default router;

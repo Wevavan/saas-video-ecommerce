@@ -1,3 +1,5 @@
+// frontend/components/cresdits/BuyCreditsModal.tsx
+
 import React, { useState } from 'react';
 import {
   Dialog,

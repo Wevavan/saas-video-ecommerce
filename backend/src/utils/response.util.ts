@@ -1,3 +1,5 @@
+// backend/src/utils/response.util.ts
+
 import { Response } from 'express'
 
 export const sendResponse = <T>(

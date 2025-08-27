@@ -33,9 +33,14 @@ class ApiService {
     this.api.interceptors.request.use(
       (config) => {
         const token = this.getAccessToken();
+        console.log('🔍 Token récupéré:', token ? `${token.substring(0, 20)}...` : 'NULL');
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
+          console.log('✅ Authorization header ajouté:', config.headers.Authorization);
+        } else {
+          console.log('❌ Pas de token trouvé');
         }
+        console.log('📤 Requête vers:', config.url);
         return config;
       },
       (error) => Promise.reject(error)

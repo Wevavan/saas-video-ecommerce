@@ -1,4 +1,4 @@
-// frontend/src/services/auth.service.ts - Version corrigée
+// frontend/src/services/auth.service.ts - VERSION CORRIGÉE
 
 import { apiService } from './api';
 
@@ -45,10 +45,10 @@ class AuthService {
     try {
       const response = await apiService.post<any>('/auth/login', credentials);
      
-      // Adapter selon la structure réelle de votre backend
-      const user = response.user || response.data?.user;
-      const token = response.token || response.data?.token;
-      const refreshToken = response.refreshToken || response.data?.refreshToken;
+      // ✅ CORRIGÉ : Adapter selon la structure réelle de votre backend
+      const user = response.user;
+      const token = response.token;
+      const refreshToken = response.refreshToken;
 
       if (response.success && token && refreshToken && user) {
         // Stocker les tokens
@@ -75,10 +75,10 @@ class AuthService {
     try {
       const response = await apiService.post<any>('/auth/register', userData);
      
-      // Adapter selon la structure réelle de votre backend
-      const user = response.user || response.data?.user;
-      const token = response.token || response.data?.token;
-      const refreshToken = response.refreshToken || response.data?.refreshToken;
+      // ✅ CORRIGÉ : Adapter selon la structure réelle de votre backend
+      const user = response.user;
+      const token = response.token;
+      const refreshToken = response.refreshToken;
 
       if (response.success && token && refreshToken && user) {
         // Stocker les tokens
@@ -118,8 +118,8 @@ class AuthService {
     try {
       const response = await apiService.get<any>('/auth/me');
      
-      // Adapter selon la structure réelle de votre backend
-      const user = response.user || response.data?.user || response.data;
+      // ✅ CORRIGÉ : Adapter selon la structure réelle de votre backend
+      const user = response.user || response.data;
 
       if (response.success && user) {
         // Mettre à jour l'utilisateur stocké
@@ -151,4 +151,5 @@ class AuthService {
   }
 }
 
+// ✅ EXPORT CORRECT
 export const authService = new AuthService();

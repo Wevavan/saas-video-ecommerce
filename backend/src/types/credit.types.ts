@@ -1,4 +1,3 @@
-
 // backend/src/types/credit.types.ts
 
 export interface CreditBalance {
@@ -12,19 +11,30 @@ export interface ConsumeCreditsRequest {
   reason: string;
   metadata?: {
     videoId?: string;
+    taskId?: string;
     description?: string;
+    imageUrl?: string;
+    style?: string;
+    prompt?: string;
+    runwayJobId?: string; // ✅ Ajouté
+    originalVideoId?: string; // ✅ Ajouté
+    creditCost?: number; // ✅ Ajouté
+    [key: string]: any; // ✅ Permet d'autres propriétés
   };
 }
 
 export interface AddCreditsRequest {
   userId: string;
   amount: number;
-  source: 'purchase' | 'admin' | 'refund' | 'bonus';
+  source: 'registration' | 'purchase' | 'admin' | 'refund' | 'bonus' | 'test';
   metadata?: {
+    reason?: string;
     orderId?: string;
-    stripePaymentId?: string;
-    adminId?: string;
-    description?: string;
+    transactionId?: string;
+    adminUserId?: string;
+    originalVideoId?: string; // ✅ Ajouté
+    runwayJobId?: string; // ✅ Ajouté
+    [key: string]: any; // ✅ Permet d'autres propriétés
   };
 }
 
@@ -56,5 +66,14 @@ export interface CreditOperationResult {
   success: boolean;
   transaction?: any;
   balance: number;
-  message?: string;
+  message: string;
+}
+
+export interface CreditUsageStats {
+  totalUsed: number;
+  byCategory: {
+    [category: string]: number;
+  };
+  recentTransactions: any[];
+  projectedUsage?: number;
 }

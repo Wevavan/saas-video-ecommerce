@@ -1,9 +1,14 @@
+// backend/src/controllers/upload.controller.ts - VERSION COMPLÈTE CORRIGÉE
+
 import { Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs/promises';
 import { v4 as uuidv4 } from 'uuid';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
+import { existsSync, readdirSync } from 'fs';
+import { Image } from '../models/Image.model';
+import mongoose from 'mongoose';
 
 // ✅ Fonction de réponse compatible avec ton système
 const sendResponse = (res: Response, success: boolean, data?: any, message?: string, statusCode: number = 200) => {
@@ -90,7 +95,7 @@ export const uploadMiddleware = (req: Request, res: Response, next: Function) =>
   });
 };
 
-// Interface pour les métadonnées d'image (version simplifiée)
+// Interface pour les métadonnées d'image
 interface ImageMetadata {
   filename: string;
   originalname: string;
@@ -101,18 +106,23 @@ interface ImageMetadata {
   uploadedAt: string;
 }
 
-// Contrôleur principal pour l'upload d'images (SANS SHARP)
+// ✅ CONTRÔLEUR PRINCIPAL AVEC SAUVEGARDE MONGODB
 export const uploadImages = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const files = req.files as Express.Multer.File[];
+    const userId = req.user?._id;
     
     if (!files || files.length === 0) {
       return sendError(res, 'Aucun fichier fourni', 400);
     }
 
+    if (!userId) {
+      return sendError(res, 'Utilisateur non authentifié', 401);
+    }
+
     const processedImages: ImageMetadata[] = [];
 
-    // Traitement de chaque image (sans compression)
+    // Traitement de chaque image avec sauvegarde en DB
     for (const file of files) {
       try {
         // Construction de l'URL d'accès
@@ -122,7 +132,20 @@ export const uploadImages = async (req: AuthenticatedRequest, res: Response) => 
         
         const imageUrl = `${baseUrl}/uploads/${file.filename}`;
 
-        // Métadonnées de l'image
+        // ✅ SAUVEGARDER EN BASE DE DONNÉES MONGODB
+        const imageDoc = new Image({
+          userId,
+          filename: file.filename,
+          originalname: file.originalname,
+          size: file.size,
+          format: path.extname(file.originalname).toLowerCase().replace('.', ''),
+          mimetype: file.mimetype,
+          url: imageUrl
+        });
+        
+        await imageDoc.save();
+
+        // Métadonnées pour la réponse
         const imageMetadata: ImageMetadata = {
           filename: file.filename,
           originalname: file.originalname,
@@ -130,16 +153,30 @@ export const uploadImages = async (req: AuthenticatedRequest, res: Response) => 
           format: path.extname(file.originalname).toLowerCase().replace('.', ''),
           url: imageUrl,
           mimetype: file.mimetype,
-          uploadedAt: new Date().toISOString()
+          uploadedAt: imageDoc.uploadedAt.toISOString()
         };
+
+        console.log('🔍 Image sauvée en DB:', {
+          filename: imageMetadata.filename,
+          multerFilename: file.filename,
+          originalname: imageMetadata.originalname,
+          userId: userId
+        });
 
         processedImages.push(imageMetadata);
 
-        console.log(`✅ Image uploadée: ${file.filename} (${Math.round(file.size/1024)}KB)`);
+        console.log(`✅ Image uploadée et sauvée: ${file.filename} (${Math.round(file.size/1024)}KB)`);
 
       } catch (imageError) {
         console.error('Erreur traitement image:', imageError);
-        // Continue avec les autres images même si une échoue
+        
+        // Si la DB échoue, supprimer le fichier physique
+        try {
+          const filepath = path.join(process.cwd(), 'uploads', file.filename);
+          await fs.unlink(filepath);
+        } catch (cleanupError) {
+          console.error('Erreur nettoyage fichier:', cleanupError);
+        }
       }
     }
 
@@ -200,28 +237,195 @@ export const serveImage = async (req: Request, res: Response) => {
   }
 };
 
-// Contrôleur pour supprimer une image
+// ✅ CONTRÔLEUR DE SUPPRESSION CORRIGÉ
 export const deleteImage = async (req: AuthenticatedRequest, res: Response) => {
+  console.log('🗑️ DELETE appelé, filename:', req.params.filename);
+  console.log('🗑️ User:', req.user?.email);
+  
   try {
     const { filename } = req.params;
+    const userId = req.user?._id;
     
-    const sanitizedFilename = sanitizeFilename(filename);
-    const filepath = path.join(process.cwd(), 'uploads', sanitizedFilename);
+    if (!userId) {
+      return sendError(res, 'Utilisateur non authentifié', 401);
+    }
 
-    try {
-      await fs.unlink(filepath);
-      console.log(`🗑️ Image supprimée: ${sanitizedFilename}`);
-      return sendResponse(res, true, {
-        message: 'Image supprimée avec succès',
-        filename: sanitizedFilename
-      }, 'Image supprimée avec succès');
-    } catch {
+    console.log('🗑️ Recherche image avec:', {
+      filename,
+      userId: userId.toString(),
+      userIdType: typeof userId
+    });
+
+    // ✅ CORRECTION 1: Recherche d'abord sans filtrer par deletedAt
+    const baseQuery = { 
+      filename: filename.trim(),
+      userId: new mongoose.Types.ObjectId(userId.toString())
+    };
+    
+    console.log('🔍 Query MongoDB base:', JSON.stringify(baseQuery, null, 2));
+    
+    const imageDoc = await Image.findOne(baseQuery);
+    
+    console.log('🔍 Résultat findOne:', !!imageDoc);
+    
+    if (!imageDoc) {
+      console.log('❌ Image non trouvée dans la base');
+      
+      // Debug: chercher sans filtres pour diagnostic
+      const allImages = await Image.find({ filename: filename.trim() });
+      console.log('🔍 Images avec ce filename:', allImages.length);
+      
+      if (allImages.length > 0) {
+        allImages.forEach((img, index) => {
+          console.log(`🔍 Image ${index}:`, {
+            userId: img.userId?.toString(),
+            filename: img.filename,
+            deletedAt: img.deletedAt,
+            userIdMatch: img.userId?.toString() === userId.toString()
+          });
+        });
+      }
+      
       return sendError(res, 'Image non trouvée', 404);
     }
 
+    // ✅ CORRECTION 2: Vérifier si l'image est déjà supprimée
+    if (imageDoc.deletedAt) {
+      console.log('⚠️ Image déjà supprimée le:', imageDoc.deletedAt);
+      return res.status(410).json({
+        success: false,
+        message: 'Image déjà supprimée',
+        data: {
+          deletedAt: imageDoc.deletedAt,
+          filename: filename
+        }
+      });
+    }
+
+    console.log('✅ Image trouvée et active:', {
+      id: imageDoc._id,
+      filename: imageDoc.filename,
+      userId: imageDoc.userId.toString()
+    });
+
+    // ✅ CORRECTION 3: Soft delete avec mise à jour atomique
+    const updatedImage = await Image.findOneAndUpdate(
+      { 
+        _id: imageDoc._id,
+        deletedAt: null // Sécurité : s'assurer qu'elle n'est pas déjà supprimée
+      },
+      { 
+        deletedAt: new Date(),
+        updatedAt: new Date()
+      },
+      { new: true }
+    );
+    
+    if (!updatedImage) {
+      console.log('❌ Échec du soft delete (race condition?)');
+      return sendError(res, 'Erreur lors de la suppression (image déjà supprimée?)', 409);
+    }
+    
+    console.log('✅ Soft delete effectué en DB');
+
+    // ✅ CORRECTION 4: Suppression du fichier physique (optionnelle et non bloquante)
+    try {
+      const filepath = path.join(process.cwd(), 'uploads', filename);
+      
+      // Vérifier que le fichier existe avant de le supprimer
+      try {
+        await fs.access(filepath);
+        await fs.unlink(filepath);
+        console.log('✅ Fichier physique supprimé');
+      } catch (fileError: any) {
+        if (fileError.code === 'ENOENT') {
+          console.log('ℹ️ Fichier physique déjà absent');
+        } else {
+          console.log('⚠️ Erreur suppression fichier physique:', fileError.message);
+        }
+      }
+    } catch (error) {
+      console.log('⚠️ Erreur lors de la gestion du fichier physique:', error);
+      // Ne pas faire échouer la requête pour ça
+    }
+    
+    return sendResponse(res, true, {
+      message: 'Image supprimée avec succès',
+      filename: filename,
+      deletedAt: updatedImage.deletedAt
+    }, 'Image supprimée avec succès');
+    
   } catch (error) {
-    console.error('Erreur suppression image:', error);
-    return sendError(res, 'Erreur lors de la suppression', 500);
+    console.error('❌ Erreur suppression image:', error);
+    return sendError(res, 'Erreur serveur lors de la suppression', 500);
+  }
+};
+
+// ✅ AMÉLIORATION DU CONTRÔLEUR getUserImages
+export const getUserImages = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user?._id;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const skip = (page - 1) * limit;
+    
+    if (!userId) {
+      return sendError(res, 'Utilisateur non authentifié', 401);
+    }
+
+    console.log('📋 GET images pour user:', req.user?.email, 'page:', page);
+
+    // Query pour récupérer seulement les images non supprimées
+    const query = { 
+      userId: new mongoose.Types.ObjectId(userId.toString()),
+      $or: [
+        { deletedAt: null },
+        { deletedAt: { $exists: false } }
+      ]
+    };
+
+    // Compter le total pour la pagination
+    const total = await Image.countDocuments(query);
+
+    // Récupérer les images avec pagination
+    const images = await Image.find(query)
+      .select('-__v') // Exclure le champ de version
+      .sort({ uploadedAt: -1 }) // Plus récentes en premier
+      .skip(skip)
+      .limit(limit)
+      .lean(); // Optimisation performance
+
+    console.log(`📋 ${images.length} images trouvées (total: ${total})`);
+
+    // Formater les métadonnées pour la réponse
+    const imageMetadata = images.map(img => ({
+      id: img._id,
+      filename: img.filename,
+      originalname: img.originalname,
+      size: img.size,
+      format: img.format,
+      url: img.url,
+      mimetype: img.mimetype,
+      uploadedAt: img.uploadedAt,
+      // Ajouter l'URL complète si nécessaire
+      fullUrl: img.url.startsWith('http') ? img.url : `${req.protocol}://${req.get('host')}/uploads/${img.filename}`
+    }));
+
+    return sendResponse(res, true, {
+      images: imageMetadata,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        totalItems: total,
+        itemsPerPage: limit,
+        hasNextPage: page < Math.ceil(total / limit),
+        hasPrevPage: page > 1
+      }
+    }, 'Images récupérées avec succès');
+
+  } catch (error) {
+    console.error('Erreur récupération images utilisateur:', error);
+    return sendError(res, 'Erreur lors de la récupération des images', 500);
   }
 };
 
@@ -229,6 +433,25 @@ export const deleteImage = async (req: AuthenticatedRequest, res: Response) => {
 export const getImageInfo = async (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
+    
+    // ✅ CHERCHER EN BASE DE DONNÉES D'ABORD
+    const imageDoc = await Image.findOne({ filename, deletedAt: null });
+    
+    if (imageDoc) {
+      const imageInfo = {
+        filename: imageDoc.filename,
+        originalname: imageDoc.originalname,
+        size: imageDoc.size,
+        format: imageDoc.format,
+        mimetype: imageDoc.mimetype,
+        url: imageDoc.url,
+        uploadedAt: imageDoc.uploadedAt.toISOString()
+      };
+
+      return sendResponse(res, true, imageInfo, 'Informations de l\'image récupérées');
+    }
+
+    // Fallback : vérification fichier physique
     const sanitizedFilename = sanitizeFilename(filename);
     const filepath = path.join(process.cwd(), 'uploads', sanitizedFilename);
 
@@ -256,42 +479,72 @@ export const getImageInfo = async (req: Request, res: Response) => {
   }
 };
 
-// Fonction de nettoyage des anciens fichiers (pour cron job)
+// ✅ FONCTION DE NETTOYAGE AMÉLIORÉE
 export const cleanupOldFiles = async (maxAgeHours: number = 24): Promise<void> => {
   try {
     const uploadDir = path.join(process.cwd(), 'uploads');
     
     // Vérifier que le dossier existe
-    try {
-      await fs.access(uploadDir);
-    } catch {
-      console.log('Dossier uploads n\'existe pas encore');
+    if (!existsSync(uploadDir)) {
+      console.log('📁 Dossier uploads n\'existe pas encore');
       return;
     }
 
-    const files = await fs.readdir(uploadDir);
-    const now = Date.now();
-    
-    let deletedCount = 0;
+    console.log('🧹 Début du nettoyage...');
+
+    // 1. Nettoyer les fichiers orphelins (sur disque mais pas en DB)
+    const files = readdirSync(uploadDir);
+    let deletedOrphans = 0;
 
     for (const file of files) {
-      const filepath = path.join(uploadDir, file);
       try {
-        const stats = await fs.stat(filepath);
-        const ageHours = (now - stats.mtime.getTime()) / (1000 * 60 * 60);
+        // Chercher dans la DB (y compris les supprimés)
+        const imageDoc = await Image.findOne({ filename: file });
         
-        if (ageHours > maxAgeHours) {
+        if (!imageDoc) {
+          // Fichier orphelin - le supprimer
+          const filepath = path.join(uploadDir, file);
           await fs.unlink(filepath);
-          deletedCount++;
-          console.log(`🗑️ Fichier ancien supprimé: ${file} (${Math.round(ageHours)}h)`);
+          deletedOrphans++;
+          console.log(`🗑️ Fichier orphelin supprimé: ${file}`);
         }
-      } catch (fileError) {
-        console.error(`Erreur traitement fichier ${file}:`, fileError);
+      } catch (error) {
+        console.error(`❌ Erreur traitement fichier ${file}:`, error);
       }
     }
 
-    console.log(`🧹 Nettoyage terminé: ${deletedCount} fichier(s) supprimé(s)`);
+    // 2. Nettoyer les anciens enregistrements soft-deleted
+    const cutoffDate = new Date();
+    cutoffDate.setHours(cutoffDate.getHours() - maxAgeHours);
+
+    const oldDeletedImages = await Image.find({
+      deletedAt: { $lt: cutoffDate, $ne: null }
+    });
+
+    let deletedOldRecords = 0;
+    for (const imageDoc of oldDeletedImages) {
+      try {
+        // Supprimer le fichier physique s'il existe encore
+        const filepath = path.join(uploadDir, imageDoc.filename);
+        try {
+          await fs.unlink(filepath);
+        } catch (fileError: any) {
+          if (fileError.code !== 'ENOENT') {
+            console.log(`⚠️ Erreur suppression fichier ${imageDoc.filename}:`, fileError.message);
+          }
+        }
+        
+        // Supprimer définitivement de la DB
+        await Image.findByIdAndDelete(imageDoc._id);
+        deletedOldRecords++;
+        console.log(`🗑️ Ancien record supprimé: ${imageDoc.filename}`);
+      } catch (error) {
+        console.error(`❌ Erreur suppression record ${imageDoc.filename}:`, error);
+      }
+    }
+
+    console.log(`✅ Nettoyage terminé: ${deletedOrphans} orphelins, ${deletedOldRecords} anciens records`);
   } catch (error) {
-    console.error('Erreur nettoyage fichiers:', error);
+    console.error('❌ Erreur nettoyage fichiers:', error);
   }
 };

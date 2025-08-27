@@ -54,75 +54,94 @@ export class CreditsService {
    * Consomme des crédits avec transaction atomique
    */
   static async consumeCredits(
-    userId: string, 
-    request: ConsumeCreditsRequest
-  ): Promise<CreditOperationResult> {
-    const session = await mongoose.startSession();
+  userId: string, 
+  request: ConsumeCreditsRequest
+): Promise<CreditOperationResult> {
+  console.log('🔍 Début consumeCredits:', { userId, amount: request.amount, reason: request.reason });
+  
+  const session = await mongoose.startSession();
+  
+  try {
+    let result: CreditOperationResult | null = null;
     
-    try {
-      // Définir la fonction de transaction avec un type explicite
-      const transactionFn = async (): Promise<CreditOperationResult> => {
-        // Vérifier et récupérer l'utilisateur
-        const user = await User.findById(userId).session(session);
-        if (!user) {
-          throw new Error('Utilisateur non trouvé');
-        }
-
-        // Vérifier les crédits suffisants
-        if (user.credits < request.amount) {
-          throw new Error(`Crédits insuffisants. Solde: ${user.credits}, Requis: ${request.amount}`);
-        }
-
-        // Décrémenter les crédits
-        const newBalance = user.credits - request.amount;
-        await User.findByIdAndUpdate(
-          userId, 
-          { credits: newBalance },
-          { session, new: true }
-        );
-
-        // Créer la transaction
-        const transaction = new CreditTransaction({
-          userId,
-          amount: request.amount,
-          type: 'debit',
-          reason: request.reason,
-          source: 'video_generation',
-          metadata: request.metadata,
-          balanceAfter: newBalance
-        });
-
-        await transaction.save({ session });
-
-        const result: CreditOperationResult = {
-          success: true,
-          transaction: transaction.toJSON(),
-          balance: newBalance,
-          message: `${request.amount} crédits consommés avec succès`
-        };
-
-        return result;
-      };
-
-      // Exécuter la transaction
-      const result = await session.withTransaction(transactionFn);
+    // Utiliser withTransaction avec une approche plus simple
+    await session.withTransaction(async () => {
+      // Vérifier et récupérer l'utilisateur
+      const user = await User.findById(userId).session(session);
+      console.log('👤 Utilisateur trouvé:', { 
+        id: user?._id, 
+        email: user?.email, 
+        credits: user?.credits 
+      });
       
-      // Vérifier le résultat et le typer explicitement
-      if (!result || typeof result !== 'object' || !('success' in result)) {
-        throw new Error('Transaction échouée - résultat invalide');
+      if (!user) {
+        throw new Error('Utilisateur non trouvé');
       }
 
-      return result as CreditOperationResult;
-    } catch (error: any) {
-      return {
-        success: false,
-        balance: 0,
-        message: error.message
+      // Vérifier les crédits suffisants
+      if (user.credits < request.amount) {
+        console.log('❌ Crédits insuffisants:', { 
+          userCredits: user.credits, 
+          demandés: request.amount 
+        });
+        throw new Error(`Crédits insuffisants. Solde: ${user.credits}, Requis: ${request.amount}`);
+      }
+
+      // Décrémenter les crédits
+      const newBalance = user.credits - request.amount;
+      const updatedUser = await User.findByIdAndUpdate(
+        userId, 
+        { credits: newBalance },
+        { session, new: true }
+      );
+      
+      console.log('✅ Utilisateur mis à jour:', { 
+        nouveauSolde: updatedUser?.credits 
+      });
+
+      // Créer la transaction
+      const transaction = new CreditTransaction({
+        userId,
+        amount: request.amount,
+        type: 'debit',
+        reason: request.reason,
+        source: 'video_generation',
+        metadata: request.metadata,
+        balanceAfter: newBalance
+      });
+
+      const savedTransaction = await transaction.save({ session });
+      console.log('✅ Transaction créée:', savedTransaction._id);
+
+      // Stocker le résultat dans la variable externe
+      result = {
+        success: true,
+        transaction: savedTransaction.toJSON(),
+        balance: newBalance,
+        message: `${request.amount} crédit${request.amount > 1 ? 's' : ''} consommé${request.amount > 1 ? 's' : ''} avec succès`
       };
-    } finally {
-      await session.endSession();
+    });
+
+    console.log('✅ Transaction MongoDB terminée avec succès');
+    
+    // Vérifier que le résultat a bien été défini
+    if (!result) {
+      throw new Error('Aucun résultat retourné par la transaction');
     }
+
+    return result;
+    
+  } catch (error: any) {
+    console.error('❌ Erreur dans consumeCredits:', error.message);
+    return {
+      success: false,
+      balance: 0,
+      message: error.message
+    };
+  } finally {
+    await session.endSession();
   }
+}
 
   /**
    * Ajoute des crédits avec transaction atomique

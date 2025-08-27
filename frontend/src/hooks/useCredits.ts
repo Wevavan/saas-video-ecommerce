@@ -1,14 +1,37 @@
+// frontend/src/hooks/useCredits.ts
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { CreditsApiService } from '../services/credits.service';
-import { 
+import type { 
   CreditBalance, 
   CreditHistoryResponse, 
   ConsumeCreditsRequest
 } from '../types/credits.types';
 import { useAuth } from '../contexts/AuthContext';
 
-export const useCredits = () => {
-  const { user, refreshUser } = useAuth();
+interface UseCreditsReturn {
+  // État
+  balance: number;
+  balanceData: CreditBalance | null;
+  history: CreditHistoryResponse | null;
+  isLoading: boolean;
+  isRefreshing: boolean;
+  error: string | null;
+
+  // Actions
+  refreshBalance: () => Promise<void>;
+  loadHistory: (params?: any) => Promise<void>;
+  consumeCredits: (request: ConsumeCreditsRequest) => Promise<any>;
+  startAutoRefresh: (intervalMs?: number) => void;
+  stopAutoRefresh: () => void;
+
+  // Helpers
+  hasEnoughCredits: (amount: number) => boolean;
+  isLowCredits: (threshold?: number) => boolean;
+}
+
+export const useCredits = (): UseCreditsReturn => {
+  const { user, refreshUser, isAuthenticated } = useAuth();
   const [balance, setBalance] = useState<CreditBalance | null>(null);
   const [history, setHistory] = useState<CreditHistoryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -22,22 +45,25 @@ export const useCredits = () => {
    * Rafraîchit le solde depuis l'API
    */
   const refreshBalance = useCallback(async (silent = false) => {
+    // Vérifier l'authentification avant l'appel
+    if (!isAuthenticated || !user) {
+      console.warn('User not authenticated, skipping balance refresh');
+      return;
+    }
+
     if (!silent) setIsRefreshing(true);
     setError(null);
 
     try {
       const newBalance = await CreditsApiService.getCurrentBalance();
       setBalance(newBalance);
-      
-      // Mettre à jour aussi le contexte utilisateur
-      await refreshUser();
     } catch (err: any) {
       setError(err.message);
       console.error('Erreur refresh balance:', err);
     } finally {
       if (!silent) setIsRefreshing(false);
     }
-  }, [refreshUser]);
+  }, [isAuthenticated, user]);
 
   /**
    * Charge l'historique des transactions
@@ -48,6 +74,12 @@ export const useCredits = () => {
     type?: 'credit' | 'debit';
     source?: string;
   } = {}) => {
+    // Vérifier l'authentification avant l'appel
+    if (!isAuthenticated || !user) {
+      console.warn('User not authenticated, skipping history load');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -60,12 +92,16 @@ export const useCredits = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isAuthenticated, user]);
 
   /**
    * Consomme des crédits
    */
   const consumeCredits = useCallback(async (request: ConsumeCreditsRequest) => {
+    if (!isAuthenticated || !user) {
+      throw new Error('Utilisateur non authentifié');
+    }
+
     setError(null);
 
     try {
@@ -91,7 +127,7 @@ export const useCredits = () => {
       setError(err.message);
       throw err;
     }
-  }, [balance, loadHistory, refreshUser]);
+  }, [balance, loadHistory, refreshUser, isAuthenticated, user]);
 
   /**
    * Auto-refresh périodique du solde
@@ -113,21 +149,27 @@ export const useCredits = () => {
     }
   }, []);
 
-  // Initialisation et cleanup
+  // Initialisation et cleanup seulement si authentifié
   useEffect(() => {
-    if (user) {
+    if (isAuthenticated && user) {
       // Charge initial
       refreshBalance();
       loadHistory({ page: 1, limit: 10 });
       
       // Démarre l'auto-refresh
       startAutoRefresh();
+    } else {
+      // Si plus authentifié, nettoyer
+      setBalance(null);
+      setHistory(null);
+      setError(null);
+      stopAutoRefresh();
     }
 
     return () => {
       stopAutoRefresh();
     };
-  }, [user, refreshBalance, loadHistory, startAutoRefresh, stopAutoRefresh]);
+  }, [isAuthenticated, user?._id, refreshBalance, loadHistory, startAutoRefresh, stopAutoRefresh]);
 
   // Sync avec le user du contexte auth
   useEffect(() => {
@@ -141,7 +183,7 @@ export const useCredits = () => {
         lastUpdated: new Date().toISOString()
       });
     }
-  }, [user?.credits]);
+  }, [user?.credits, user?._id]);
 
   return {
     // État
@@ -153,7 +195,7 @@ export const useCredits = () => {
     error,
 
     // Actions
-    refreshBalance,
+    refreshBalance: () => refreshBalance(false),
     loadHistory,
     consumeCredits,
     startAutoRefresh,
@@ -164,3 +206,6 @@ export const useCredits = () => {
     isLowCredits: (threshold = 3) => (balance?.balance ?? user?.credits ?? 0) < threshold
   };
 };
+
+// Export par défaut pour compatibilité
+export default useCredits;

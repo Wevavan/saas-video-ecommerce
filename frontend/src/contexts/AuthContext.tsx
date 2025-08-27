@@ -1,4 +1,4 @@
-// frontend/src/contexts/AuthContext.tsx
+// frontend/src/contexts/AuthContext.tsx - VERSION CORRIGÉE
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { authService, User, LoginRequest, RegisterRequest } from '../services/auth.service';
@@ -31,13 +31,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       try {
         const storedUser = authService.getStoredUser();
         const storedToken = authService.getStoredToken();
-
+        
         if (storedUser && storedToken) {
-          // Vérifier que le token est toujours valide
+          // ✅ AMÉLIORATION : Set user immédiatement pour éviter les erreurs 401
+          setUser(storedUser);
+          
+          // Puis vérifier que le token est toujours valide en arrière-plan
           try {
             const currentUser = await authService.getCurrentUser();
             setUser(currentUser);
           } catch (error) {
+            console.warn('Token expired during init, redirecting to login');
             // Token invalide, nettoyer
             await authService.logout();
             setUser(null);
@@ -100,7 +104,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(currentUser);
     } catch (error) {
       console.error('Erreur lors du rafraîchissement du profil:', error);
-      await logout();
+      // ✅ AMÉLIORATION : Ne pas déconnecter automatiquement sur refresh error
+      // Laisser l'utilisateur connecté avec les données existantes
+      console.warn('Keeping user logged with existing data');
     }
   };
 

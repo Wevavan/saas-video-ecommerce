@@ -1,30 +1,42 @@
+// backend/src/services/auth.service.ts - VERSION CORRIGÉE
+
 import jwt from 'jsonwebtoken';
 import { User, IUser } from '../models/User.model';
 
 export class AuthService {
-  private static readonly JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-  private static readonly JWT_EXPIRES_IN = '1h';
-  private static readonly REFRESH_TOKEN_EXPIRES_IN = '7d';
+  private static readonly JWT_SECRET = process.env.JWT_SECRET!;
+  // ✅ CORRIGÉ : Utiliser la variable d'environnement
+  private static readonly JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+  private static readonly REFRESH_TOKEN_EXPIRES_IN = '30d';
 
   static generateAccessToken(userId: string, email: string): string {
-    return jwt.sign(
-      { userId, email, type: 'access' },
-      this.JWT_SECRET,
-      { expiresIn: this.JWT_EXPIRES_IN }
-    );
-  }
+      // ✅ UTILISEZ directement process.env
+      const secret = process.env.JWT_SECRET!;
+      const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
+      
+      console.log('🔑 JWT_SECRET direct:', secret?.substring(0, 10) + '...');
+      
+      return jwt.sign(
+        { userId, email, type: 'access' },
+        secret,
+        { expiresIn }
+      );
+    }
 
   static generateRefreshToken(userId: string): string {
+    const secret = process.env.JWT_SECRET!;
+    
     return jwt.sign(
       { userId, type: 'refresh' },
-      this.JWT_SECRET,
-      { expiresIn: this.REFRESH_TOKEN_EXPIRES_IN }
+      secret,
+      { expiresIn: '30d' }
     );
   }
 
   static verifyToken(token: string): any {
     try {
-      return jwt.verify(token, this.JWT_SECRET);
+      const secret = process.env.JWT_SECRET!;
+      return jwt.verify(token, secret);
     } catch (error) {
       throw new Error('Token invalide');
     }
@@ -42,10 +54,10 @@ export class AuthService {
       email,
       password, // Le hash se fait automatiquement
       name,
-      credits: 10, // 100 crédits gratuits
+      credits: 100, // ✅ CORRIGÉ : 100 crédits gratuits (pas 10)
       plan: 'free'
     });
-
+    
     await user.save();
 
     // Générer les tokens
@@ -73,7 +85,7 @@ export class AuthService {
     }
 
     // Mettre à jour la dernière connexion
-    user.lastLoginAt = new Date(); // ← Propriété correcte
+    user.lastLoginAt = new Date();
     await user.save();
 
     // Générer les tokens
@@ -89,7 +101,7 @@ export class AuthService {
   static async refreshAccessToken(refreshToken: string) {
     try {
       const decoded = this.verifyToken(refreshToken);
-      
+     
       if (decoded.type !== 'refresh') {
         throw new Error('Token de rafraîchissement invalide');
       }
@@ -100,6 +112,7 @@ export class AuthService {
       }
 
       const accessToken = this.generateAccessToken(user._id.toString(), user.email);
+      
       return { accessToken };
     } catch (error) {
       throw new Error('Token de rafraîchissement invalide');

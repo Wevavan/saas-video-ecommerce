@@ -1,3 +1,5 @@
+// frontend/src/components/credits/CreditHistory.tsx
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';

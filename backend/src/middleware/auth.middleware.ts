@@ -1,3 +1,5 @@
+// backend/src/middleware/auth.middleware.ts - VERSION SÉCURISÉE
+
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import { User } from '../models/User.model'
@@ -24,9 +26,47 @@ export const authenticateToken = async (
       return
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string }
-    const user = await User.findById(decoded.userId).select('-password')
+    // 🔍 DEBUG - Vérifiez les secrets
+    const secret = process.env.JWT_SECRET || 'your-secret-key'
+    console.log('🔑 Secret utilisé:', secret.substring(0, 10) + '...')
 
+    // Décoder le token de manière sécurisée
+    let decoded: any
+    try {
+      decoded = jwt.verify(token, secret)
+    } catch (jwtError: any) {
+      console.log('❌ JWT Error:', jwtError.message)
+      res.status(401).json({
+        success: false,
+        message: 'Token invalide'
+      })
+      return
+    }
+
+    // Vérifier la structure du token
+    if (!decoded.userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Token malformé'
+      })
+      return
+    }
+
+    console.log('✅ Token décodé:', { userId: decoded.userId, type: decoded.type })
+
+    // Chercher l'utilisateur
+    let user: any
+    try {
+      user = await User.findById(decoded.userId).select('-password')
+    } catch (dbError: any) {
+      console.log('❌ DB Error:', dbError.message)
+      res.status(500).json({
+        success: false,
+        message: 'Erreur base de données'
+      })
+      return
+    }
+    
     if (!user) {
       res.status(401).json({
         success: false,
@@ -35,12 +75,16 @@ export const authenticateToken = async (
       return
     }
 
-    req.user = user as IUser // ← Cast explicite si nécessaire
+    console.log('✅ Utilisateur trouvé:', user.email)
+
+    req.user = user as IUser
     next()
-  } catch (error) {
-    res.status(401).json({
+    
+  } catch (error: any) {
+    console.error('❌ Erreur générale middleware:', error.message)
+    res.status(500).json({
       success: false,
-      message: 'Token invalide'
+      message: 'Erreur serveur'
     })
   }
 }
